@@ -103,6 +103,12 @@ db.exec(`
     details TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    company_name TEXT DEFAULT 'شركة الوتد',
+    company_logo TEXT
+  );
 `);
 
 // Migration: Ensure invoices table has necessary columns
@@ -137,11 +143,18 @@ if (!adminExists) {
   );
 }
 
+// Seed initial settings if not exists
+const settingsExist = db.prepare("SELECT * FROM settings WHERE id = 1").get();
+if (!settingsExist) {
+  db.prepare("INSERT INTO settings (id, company_name) VALUES (1, 'شركة الوتد')").run();
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // --- API Routes ---
 
@@ -180,6 +193,21 @@ async function startServer() {
   app.delete("/api/users/:id", (req, res) => {
     const { id } = req.params;
     db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    res.json({ success: true });
+  });
+
+  // Settings
+  app.get("/api/settings", (req, res) => {
+    const settings = db.prepare("SELECT * FROM settings WHERE id = 1").get();
+    res.json(settings);
+  });
+
+  app.post("/api/settings", (req, res) => {
+    const { company_name, company_logo } = req.body;
+    db.prepare("UPDATE settings SET company_name = ?, company_logo = ? WHERE id = 1").run(
+      company_name,
+      company_logo
+    );
     res.json({ success: true });
   });
 

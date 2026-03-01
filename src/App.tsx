@@ -81,6 +81,10 @@ export default function App() {
   const [payroll, setPayroll] = useState<Payroll[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [settings, setSettings] = useState<{ company_name: string, company_logo: string | null }>({
+    company_name: 'شركة الوتد',
+    company_logo: null
+  });
   const [user, setUser] = useState<User | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -91,6 +95,18 @@ export default function App() {
   const [showStatusModal, setShowStatusModal] = useState<Invoice | null>(null);
 
   useEffect(() => {
+    // Fetch settings immediately on mount
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        setSettings(data);
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
+    };
+    fetchSettings();
+
     const savedUser = localStorage.getItem('accounting_user');
     if (savedUser) {
       const parsedUser = JSON.parse(savedUser);
@@ -122,6 +138,35 @@ export default function App() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const company_name = formData.get('company_name') as string;
+    const logoFile = formData.get('company_logo') as File;
+
+    let company_logo = settings.company_logo;
+
+    if (logoFile && logoFile.size > 0) {
+      const reader = new FileReader();
+      company_logo = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(logoFile);
+      });
+    }
+
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_name, company_logo })
+    });
+
+    if (res.ok) {
+      alert('تم تحديث الإعدادات بنجاح');
+      setSettings({ company_name, company_logo });
+      fetchData();
     }
   };
 
@@ -525,10 +570,14 @@ export default function App() {
           className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 w-full max-w-md"
         >
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-orange-200">
-              <CreditCard size={32} />
+            <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-orange-200 overflow-hidden">
+              {settings.company_logo ? (
+                <img src={settings.company_logo} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                <CreditCard size={32} />
+              )}
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">نظام الوتد للمحاسبة</h1>
+            <h1 className="text-2xl font-bold text-slate-800 text-center">{settings.company_name}</h1>
             <p className="text-slate-500 mt-2">يرجى تسجيل الدخول للمتابعة</p>
           </div>
 
@@ -607,10 +656,14 @@ export default function App() {
         className={`bg-white border-l border-slate-200 flex flex-col overflow-hidden fixed lg:relative h-full z-50 lg:z-0 shadow-2xl lg:shadow-none`}
       >
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white">
-            <CreditCard size={24} />
+          <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white overflow-hidden shrink-0">
+            {settings.company_logo ? (
+              <img src={settings.company_logo} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <CreditCard size={24} />
+            )}
           </div>
-          <h1 className="text-xl font-bold text-orange-600">الوتد</h1>
+          <h1 className="text-xl font-bold text-orange-600 truncate">{settings.company_name}</h1>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">
@@ -651,12 +704,20 @@ export default function App() {
             onClick={() => setActiveTab('reports')} 
           />
           {user.role === 'admin' && (
-            <SidebarItem 
-              icon={Settings} 
-              label="إدارة المستخدمين" 
-              active={activeTab === 'users'} 
-              onClick={() => setActiveTab('users')} 
-            />
+            <>
+              <SidebarItem 
+                icon={Users} 
+                label="إدارة المستخدمين" 
+                active={activeTab === 'users'} 
+                onClick={() => setActiveTab('users')} 
+              />
+              <SidebarItem 
+                icon={Settings} 
+                label="إعدادات الشركة" 
+                active={activeTab === 'settings'} 
+                onClick={() => setActiveTab('settings')} 
+              />
+            </>
           )}
         </nav>
 
@@ -699,6 +760,7 @@ export default function App() {
               {activeTab === 'transactions' && 'العمليات المالية'}
               {activeTab === 'reports' && 'التقارير المالية'}
               {activeTab === 'users' && 'إدارة المستخدمين'}
+              {activeTab === 'settings' && 'إعدادات الشركة'}
             </h2>
           </div>
           
@@ -1233,6 +1295,62 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'settings' && user.role === 'admin' && (
+              <motion.div 
+                key="settings"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="max-w-2xl mx-auto"
+              >
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                  <div className="p-8 border-b border-slate-100 bg-slate-50">
+                    <h3 className="text-2xl font-bold">إعدادات الشركة</h3>
+                    <p className="text-slate-500">تخصيص اسم وشعار النظام</p>
+                  </div>
+                  <form onSubmit={handleUpdateSettings} className="p-8 space-y-8">
+                    <div className="space-y-4">
+                      <label className="block text-sm font-bold text-slate-700">اسم الشركة / المؤسسة</label>
+                      <input 
+                        name="company_name" 
+                        defaultValue={settings.company_name}
+                        required 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-orange-500 outline-none transition-all text-lg font-bold" 
+                      />
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="block text-sm font-bold text-slate-700">شعار الشركة</label>
+                      <div className="flex items-center gap-8 p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                        <div className="w-32 h-32 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                          {settings.company_logo ? (
+                            <img src={settings.company_logo} alt="Preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <CreditCard size={48} className="text-slate-300" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <input 
+                            type="file" 
+                            name="company_logo" 
+                            accept="image/*"
+                            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                          />
+                          <p className="mt-2 text-xs text-slate-400">يفضل استخدام صورة مربعة بخلفية شفافة (PNG)</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button 
+                      type="submit" 
+                      className="w-full py-4 bg-orange-600 text-white rounded-2xl font-bold text-lg hover:bg-orange-700 transition-all shadow-lg shadow-orange-200"
+                    >
+                      حفظ التغييرات
+                    </button>
+                  </form>
                 </div>
               </motion.div>
             )}
